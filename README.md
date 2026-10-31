@@ -1,0 +1,76 @@
+# DevPocket
+
+A small macOS menu bar app that keeps developer utilities one click (or keystroke) away.
+
+**Ways to open it**
+
+- **Floating bubble.** Always on top, on every Space. Click it to open or close the tool window, drag it anywhere (it remembers where you put it), and right-click it to jump straight to a tool.
+- **Menu bar icon** (🔧). Lists every tool, plus toggles for the bubble, keeping the window on top, and launching at login.
+- **Global hotkey** `⌃⌥Space`. Toggles the tool window from any app.
+
+**Tools so far**
+
+| Tool | What it does |
+|---|---|
+| JWT Decoder | Header and payload as pretty JSON, plus `alg`, issued and expiry times and a valid/expired badge. Accepts a `Bearer ` prefix. It decodes only and does not verify the signature. |
+| JSON Formatter | Live validation, pretty-print (2 or 4 spaces, or tabs) or minify, and optional key sorting. Key order and number literals are preserved. |
+| Base64 | Encode and decode, with Base64URL support. |
+
+Everything runs locally. Nothing leaves your Mac.
+
+## Requirements
+
+macOS 14 or later, and Xcode (or the Swift 5.10+ command line tools).
+
+## Build & run
+
+```bash
+make run        # build build/DevPocket.app and launch it
+make test       # unit tests for the core logic
+make install    # copy to /Applications and launch (do this before enabling "Launch at Login")
+```
+
+During development, `swift run DevPocket` also works.
+
+## Layout
+
+```
+Sources/
+  DevPocketCore/          Pure logic, no UI, unit-tested
+    JWTDecoder.swift
+    JSONTool.swift
+    Base64Tool.swift
+  DevPocket/
+    App/                  Entry point, AppCoordinator, menu bar menu, global hotkey
+    Windows/              Floating bubble, tool window (NSPanel), sidebar + detail host
+    Components/           CodeEditor (NSTextView wrapper), Pane, StatusBadge, helpers
+    Utilities/            DevUtility model, registry, and one view per tool
+Support/Info.plist        LSUIElement=true (no Dock icon)
+scripts/bundle.sh         swift build, wrap in .app, ad-hoc codesign
+```
+
+## Adding a utility
+
+1. Add the logic to `Sources/DevPocketCore/` and write tests for it in `Tests/DevPocketCoreTests/`.
+2. Create `Sources/DevPocket/Utilities/MyToolView.swift` with a SwiftUI view, and declare the tool next to it:
+   ```swift
+   extension DevUtility {
+       static let myTool = DevUtility(
+           id: "my-tool", name: "My Tool", symbol: "hammer",
+           summary: "One-line description", keywords: ["search", "terms"]
+       ) { AnyView(MyToolView()) }
+   }
+   ```
+3. Append `.myTool` to `UtilityRegistry.all` in `DevUtility.swift`.
+
+The new tool then shows up automatically in the sidebar, the menu bar, the bubble's right-click menu and search.
+
+The shared building blocks are `Pane` (a titled box with buttons), `CodeEditor` (a monospaced editor with smart quotes turned off), `StatusBadge` and `Clipboard`.
+
+## Ideas for next steps
+
+- More tools: URL encode/decode, UUID generator, Unix timestamp converter, hash (MD5/SHA), regex tester, diff, cron explainer, color converter
+- Configurable hotkey and a settings window
+- Auto-detect clipboard content when the window opens, e.g. a JWT goes straight to the JWT Decoder
+- Keep each tool's input when switching between tools
+- Syntax highlighting in `CodeEditor`

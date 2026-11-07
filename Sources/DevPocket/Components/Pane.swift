@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// A titled, bordered box with optional trailing buttons. Utilities compose
-/// their layouts out of these.
+/// A titled editor card with optional trailing icon buttons. Utilities
+/// compose their layouts out of these.
 struct Pane<Content: View, Accessory: View>: View {
     let title: String
     let content: Content
@@ -16,18 +16,19 @@ struct Pane<Content: View, Accessory: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 2) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
+                    .textCase(.uppercase)
                     .foregroundStyle(.secondary)
                 Spacer()
                 accessory
             }
-            .controlSize(.small)
+            .frame(height: 18)
 
             content
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
         }
     }
 }
@@ -38,38 +39,53 @@ extension Pane where Accessory == EmptyView {
     }
 }
 
-struct StatusBadge: View {
-    enum Kind {
-        case ok, warning, error, neutral
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
 
-        var color: Color {
-            switch self {
-            case .ok: .green
-            case .warning: .orange
-            case .error: .red
-            case .neutral: .secondary
-            }
-        }
-    }
-
-    let kind: Kind
-    let text: String
-
-    init(_ kind: Kind, _ text: String) {
-        self.kind = kind
-        self.text = text
+    init(_ symbol: String, help: String, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.help = help
+        self.action = action
     }
 
     var body: some View {
-        Text(text)
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .foregroundStyle(kind.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(kind.color.opacity(0.12), in: Capsule())
-            .help(text)
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 22, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+    }
+}
+
+/// Paste / clear buttons for an input pane.
+struct InputActions: View {
+    @Binding var text: String
+
+    var body: some View {
+        IconButton("doc.on.clipboard", help: "Replace with clipboard (⌘⇧V)") {
+            text = Clipboard.paste() ?? text
+        }
+        IconButton("xmark.circle", help: "Clear (⌘L)") { text = "" }
+            .disabled(text.isEmpty)
+    }
+}
+
+struct EmptyHint: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol).font(.system(size: 28, weight: .light))
+            Text(text).font(.callout)
+        }
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

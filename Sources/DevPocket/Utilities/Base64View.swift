@@ -7,70 +7,97 @@ extension DevUtility {
         name: "Base64",
         symbol: "arrow.left.arrow.right.square",
         summary: "Encode or decode Base64 / Base64URL text",
-        keywords: ["encode", "decode", "base64url"]
-    ) { AnyView(Base64View()) }
+        keywords: ["encode", "decode", "base64url"],
+        handles: [.base64],
+        model: { Base64Model() },
+        content: { Base64View(model: $0) },
+        controls: { Base64Controls(model: $0) }
+    )
 }
 
-struct Base64View: View {
-    private enum Mode: String, CaseIterable, Identifiable {
+final class Base64Model: ToolModel {
+    enum Mode: String, CaseIterable, Identifiable {
         case encode = "Encode"
         case decode = "Decode"
         var id: Self { self }
     }
 
-    @State private var input = ""
-    @State private var mode = Mode.encode
-    @State private var urlSafe = false
+    @Published var mode = Mode.encode
+    @Published var urlSafe = false
 
-    var body: some View {
-        let result: Result<String, Error>? = input.isEmpty
-            ? nil
-            : Result {
-                switch mode {
-                case .encode: Base64Tool.encode(input, urlSafe: urlSafe)
-                case .decode: try Base64Tool.decode(input)
-                }
-            }
-        let output = (try? result?.get()) ?? ""
-
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Picker("Mode", selection: $mode) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-
-                Toggle("URL-safe", isOn: $urlSafe)
-                    .disabled(mode == .decode)
-                    .help("Base64URL: - and _ instead of + and /, no padding. Decoding accepts both.")
-
-                Spacer(minLength: 8)
-                if case .failure(let error) = result {
-                    StatusBadge(.error, error.localizedDescription)
-                }
-            }
-            .controlSize(.small)
-
-            Pane(mode == .encode ? "Text" : "Base64") {
-                CodeEditor(text: $input, placeholder: mode == .encode ? "Text to encode…" : "Base64 to decode…")
-            } accessory: {
-                Button("Paste") { input = Clipboard.paste() ?? input }
-                Button("Clear") { input = "" }.disabled(input.isEmpty)
-            }
-
-            Pane(mode == .encode ? "Base64" : "Text") {
-                CodeEditor(text: .constant(output), isEditable: false)
-            } accessory: {
-                Button("Swap") {
-                    input = output
-                    mode = mode == .encode ? .decode : .encode
-                }
-                .disabled(output.isEmpty)
-                Button("Copy") { Clipboard.copy(output) }.disabled(output.isEmpty)
+    var result: Result<String, Error>? {
+        guard !input.isEmpty else { return nil }
+        return Result {
+            switch mode {
+            case .encode: Base64Tool.encode(input, urlSafe: urlSafe)
+            case .decode: try Base64Tool.decode(input)
             }
         }
-        .padding(16)
+    }
+
+    override var status: ToolStatus {
+        switch result {
+        case .none: .idle("Type text to encode, or paste Base64 to decode")
+        case .failure(let error): ToolStatus(kind: .error, text: error.localizedDescription)
+        case .success(let output):
+            ToolStatus(kind: .ok, text: mode == .encode ? "Encoded" : "Decoded", detail: "\(input.count) → \(output.count) chars")
+        }
+    }
+
+    override var primaryOutput: String? { try? result?.get() }
+
+    override var copyLabel: String { "Copy Result" }
+
+    override func accept(clipboard text: String, kind: ContentKind) {
+        if kind == .base64 { mode = .decode }
+        super.accept(clipboard: text, kind: kind)
+    }
+}
+
+struct Base64Controls: View {
+    @ObservedObject var model: Base64Model
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Picker("Mode", selection: $model.mode) {
+                ForEach(Base64Model.Mode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+
+            Toggle("URL-safe", isOn: $model.urlSafe)
+                .disabled(model.mode == .decode)
+                .help("Base64URL: - and _ instead of + and /, no padding. Decoding accepts both.")
+        }
+    }
+}
+
+struct Base64View: View {
+    @ObservedObject var model: Base64Model
+
+    var body: some View {
+        let output = model.primaryOutput ?? ""
+
+        VStack(spacing: 12) {
+            Pane(model.mode == .encode ? "Text" : "Base64") {
+                CodeEditor(text: $model.input, placeholder: model.mode == .encode ? "Text to encode…" : "Base64 to decode…")
+            } accessory: {
+                InputActions(text: $model.input)
+            }
+
+            Pane(model.mode == .encode ? "Base64" : "Text") {
+                CodeEditor(text: .constant(output), isEditable: false)
+            } accessory: {
+                IconButton("arrow.up.arrow.down", help: "Swap input and output") {
+                    model.input = output
+                    model.mode = model.mode == .encode ? .decode : .encode
+                }
+                .disabled(output.isEmpty)
+                IconButton("doc.on.doc", help: "Copy output") { Clipboard.copy(output) }
+                    .disabled(output.isEmpty)
+            }
+        }
+        .padding(14)
     }
 }

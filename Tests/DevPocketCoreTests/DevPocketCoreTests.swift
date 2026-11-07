@@ -91,3 +91,107 @@ final class JWTDecoderTests: XCTestCase {
         XCTAssertThrowsError(try JWTDecoder.decode("e30.!!!.x")) { XCTAssertEqual($0 as? JWTDecodeError, .invalidBase64(segment: "payload")) }
     }
 }
+
+final class ContentDetectorTests: XCTestCase {
+    let jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+
+    func testJWT() {
+        XCTAssertEqual(ContentDetector.detect(jwt).first?.kind, .jwt)
+        XCTAssertEqual(ContentDetector.detect("Bearer \(jwt)\n").first?.kind, .jwt)
+    }
+
+    func testJSON() {
+        XCTAssertEqual(ContentDetector.detect(#"  {"a": [1, 2]}"#), [Detection(kind: .json, confidence: 0.9)])
+        XCTAssertEqual(ContentDetector.detect("[1, 2, 3]").first?.kind, .json)
+    }
+
+    func testBrokenJSONStillGoesToFormatterWithLowConfidence() {
+        XCTAssertEqual(ContentDetector.detect(#"{"a": "#), [Detection(kind: .json, confidence: 0.4)])
+    }
+
+    func testBase64() {
+        XCTAssertEqual(ContentDetector.detect(Base64Tool.encode("Hello, DevPocket!")), [Detection(kind: .base64, confidence: 0.6)])
+        XCTAssertEqual(ContentDetector.detect(Base64Tool.encode(#"{"ok":true}"#, urlSafe: true)), [Detection(kind: .base64, confidence: 0.85)])
+    }
+
+    func testPlainTextMatchesNothing() {
+        for text in ["", "   ", "hello world", "Optimization", "deadbeefcafe1234", "12345678", "true", "42", "https://example.com/a?b=c"] {
+            XCTAssertEqual(ContentDetector.detect(text), [], "expected no detection for \(text.debugDescription)")
+        }
+    }
+}
+
+final class EpochToolTests: XCTestCase {
+    let utc = TimeZone(identifier: "UTC")!
+    let reference = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14T22:13:20Z
+
+    func testUnitIsInferredFromMagnitude() throws {
+        let cases: [(String, EpochUnit)] = [
+            ("1700000000", .seconds),
+            ("1700000000000", .milliseconds),
+            ("1700000000000000", .microseconds),
+            ("1700000000000000000", .nanoseconds),
+        ]
+        for (input, unit) in cases {
+            let parsed = try EpochTool.parse(input)
+            XCTAssertEqual(parsed.unit, unit, input)
+            XCTAssertEqual(parsed.date.timeIntervalSince1970, 1_700_000_000, accuracy: 0.001, input)
+        }
+    }
+
+    func testFractionalAndNegativeSeconds() throws {
+        XCTAssertEqual(try EpochTool.parse("1700000000.5").date.timeIntervalSince1970, 1_700_000_000.5)
+        XCTAssertEqual(try EpochTool.parse(" -1 ").date, Date(timeIntervalSince1970: -1))
+    }
+
+    func testDateStrings() throws {
+        let cases: [(String, TimeInterval)] = [
+            ("2023-11-14T22:13:20Z", 1_700_000_000),
+            ("2023-11-14T22:13:20.123Z", 1_700_000_000.123),
+            ("2023-11-15T03:43:20+05:30", 1_700_000_000),
+            ("2023-11-14T22:13:20", 1_700_000_000),
+            ("2023-11-14 22:13:20", 1_700_000_000),
+            ("2023-11-14 22:13", 1_699_999_980),
+            ("2023-11-14", 1_699_920_000),
+            ("Tue, 14 Nov 2023 22:13:20 +0000", 1_700_000_000),
+        ]
+        for (input, expected) in cases {
+            let parsed = try EpochTool.parse(input, timeZone: utc)
+            XCTAssertNil(parsed.unit, input)
+            XCTAssertEqual(parsed.date.timeIntervalSince1970, expected, accuracy: 0.0005, input)
+        }
+    }
+
+    func testZonelessDatesUseTheGivenTimeZone() throws {
+        let kolkata = TimeZone(identifier: "Asia/Kolkata")!
+        XCTAssertEqual(try EpochTool.parse("2023-11-15 03:43:20", timeZone: kolkata).date, reference)
+    }
+
+    func testNowAndErrors() throws {
+        XCTAssertEqual(try EpochTool.parse("Now", now: reference), EpochParse(date: reference, unit: nil))
+        XCTAssertThrowsError(try EpochTool.parse("hello"))
+        XCTAssertThrowsError(try EpochTool.parse("12:30"))
+    }
+
+    func testFormatting() {
+        XCTAssertEqual(EpochTool.epochString(reference, unit: .seconds), "1700000000")
+        XCTAssertEqual(EpochTool.epochString(reference, unit: .milliseconds), "1700000000000")
+        XCTAssertEqual(EpochTool.epochString(Date(timeIntervalSince1970: 1_700_000_000.5), unit: .seconds), "1700000000")
+        XCTAssertEqual(EpochTool.epochString(Date(timeIntervalSince1970: 1_700_000_000.5), unit: .milliseconds), "1700000000500")
+        XCTAssertEqual(EpochTool.iso8601(reference, timeZone: utc), "2023-11-14T22:13:20Z")
+        XCTAssertEqual(EpochTool.iso8601(reference, timeZone: TimeZone(identifier: "Asia/Kolkata")!), "2023-11-15T03:43:20+05:30")
+        XCTAssertEqual(EpochTool.iso8601(Date(timeIntervalSince1970: 1_700_000_000.25), timeZone: utc), "2023-11-14T22:13:20.250Z")
+        XCTAssertEqual(EpochTool.rfc2822(reference, timeZone: utc), "Tue, 14 Nov 2023 22:13:20 +0000")
+    }
+
+    func testTimestampDetection() {
+        XCTAssertEqual(ContentDetector.detect("1700000000"), [Detection(kind: .timestamp, confidence: 0.7)])
+        XCTAssertEqual(ContentDetector.detect("1700000000000").first?.kind, .timestamp)
+        XCTAssertEqual(ContentDetector.detect("2023-11-14T22:13:20Z").first?.kind, .timestamp)
+        XCTAssertEqual(ContentDetector.detect("2023-11-14 22:13:20").first?.kind, .timestamp)
+        // Out of the 2000–2100 range, or the wrong number of digits.
+        for text in ["0000000001", "9999999999", "170000000", "17000000000", "2023-11-14"] {
+            XCTAssertNil(ContentDetector.detect(text).first { $0.kind == .timestamp }, text)
+        }
+    }
+}

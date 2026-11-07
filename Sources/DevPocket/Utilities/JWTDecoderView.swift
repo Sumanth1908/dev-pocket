@@ -7,38 +7,61 @@ extension DevUtility {
         name: "JWT Decoder",
         symbol: "key.horizontal",
         summary: "Inspect a JSON Web Token's header, payload and expiry",
-        keywords: ["token", "bearer", "auth", "oauth", "claims"]
-    ) { AnyView(JWTDecoderView()) }
+        keywords: ["token", "bearer", "auth", "oauth", "claims"],
+        handles: [.jwt],
+        model: { JWTModel() },
+        content: { JWTDecoderView(model: $0) },
+        controls: { _ in EmptyView() }
+    )
+}
+
+final class JWTModel: ToolModel {
+    var decoded: Result<DecodedJWT, Error>? {
+        input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : Result { try JWTDecoder.decode(input) }
+    }
+
+    override var status: ToolStatus {
+        switch decoded {
+        case .none:
+            return .idle("Paste a JWT. It's decoded on this Mac; the signature isn't verified.")
+        case .failure(let error):
+            return ToolStatus(kind: .error, text: error.localizedDescription)
+        case .success(let jwt):
+            let detail = [jwt.algorithm.map { "alg \($0)" }, "\(input.count) chars"].compactMap { $0 }.joined(separator: " · ")
+            switch jwt.validity() {
+            case .valid(let until):
+                return ToolStatus(kind: .ok, text: "Valid · expires \(relativeDate(until))", detail: detail)
+            case .expired(let at):
+                return ToolStatus(kind: .warning, text: "Expired \(relativeDate(at))", detail: detail)
+            case .notYetValid(let from):
+                return ToolStatus(kind: .warning, text: "Not valid until \(relativeDate(from))", detail: detail)
+            case .noExpiry:
+                return ToolStatus(kind: .ok, text: "Decoded · no expiry", detail: detail)
+            }
+        }
+    }
+
+    override var primaryOutput: String? { try? decoded?.get().payload }
+
+    override var copyLabel: String { "Copy Payload" }
 }
 
 struct JWTDecoderView: View {
-    @State private var token = ""
+    @ObservedObject var model: JWTModel
 
     var body: some View {
-        let result: Result<DecodedJWT, Error>? = token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : Result { try JWTDecoder.decode(token) }
+        let jwt = try? model.decoded?.get()
 
         VStack(alignment: .leading, spacing: 12) {
-            Pane("Encoded token") {
-                CodeEditor(text: $token, placeholder: "Paste a JWT (a leading \"Bearer \" is fine)…")
-                    .frame(height: 96)
+            Pane("Token") {
+                CodeEditor(text: $model.input, placeholder: "Paste a JWT (a leading \"Bearer \" is fine)…")
+                    .frame(height: 84)
             } accessory: {
-                Button("Paste") { token = Clipboard.paste() ?? token }
-                Button("Clear") { token = "" }.disabled(token.isEmpty)
+                InputActions(text: $model.input)
             }
 
-            switch result {
-            case .none:
-                Text("Decoding happens locally — the token never leaves your Mac. The signature is not verified.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            case .failure(let error):
-                StatusBadge(.error, error.localizedDescription)
-                Spacer()
-            case .success(let jwt):
-                ClaimsBar(jwt: jwt)
+            if let jwt {
+                ClaimTimes(jwt: jwt)
                 HSplitView {
                     jsonPane("Header", jwt.header)
                         .frame(minWidth: 180)
@@ -47,51 +70,40 @@ struct JWTDecoderView: View {
                         .frame(minWidth: 240)
                         .padding(.leading, 6)
                 }
+            } else {
+                EmptyHint(symbol: "key.horizontal", text: "The header and payload will appear here")
             }
         }
-        .padding(16)
+        .padding(14)
     }
 
     private func jsonPane(_ title: String, _ json: String) -> some View {
         Pane(title) {
             CodeEditor(text: .constant(json), isEditable: false)
         } accessory: {
-            Button("Copy") { Clipboard.copy(json) }
+            IconButton("doc.on.doc", help: "Copy \(title.lowercased())") { Clipboard.copy(json) }
         }
     }
 }
 
-private struct ClaimsBar: View {
+private struct ClaimTimes: View {
     let jwt: DecodedJWT
 
     var body: some View {
-        HStack(spacing: 8) {
-            validity
-            if let algorithm = jwt.algorithm { StatusBadge(.neutral, "alg: \(algorithm)") }
-            if let issuedAt = jwt.issuedAt { claim("Issued", issuedAt) }
-            if let expiresAt = jwt.expiresAt { claim("Expires", expiresAt) }
-            Spacer(minLength: 0)
-        }
-    }
+        let times = [("Issued", jwt.issuedAt), ("Not before", jwt.notBefore), ("Expires", jwt.expiresAt)]
+            .compactMap { label, date in date.map { (label, $0) } }
 
-    @ViewBuilder
-    private var validity: some View {
-        switch jwt.validity() {
-        case .valid(let until): StatusBadge(.ok, "Valid · expires \(relative(until))")
-        case .expired(let at): StatusBadge(.error, "Expired \(relative(at))")
-        case .notYetValid(let from): StatusBadge(.warning, "Not valid until \(relative(from))")
-        case .noExpiry: StatusBadge(.neutral, "No expiry")
-        }
-    }
-
-    private func claim(_ label: String, _ date: Date) -> some View {
-        Text("\(label) \(date.formatted(date: .abbreviated, time: .shortened))")
+        if !times.isEmpty {
+            HStack(spacing: 16) {
+                ForEach(times, id: \.0) { label, date in
+                    HStack(spacing: 4) {
+                        Text(label).foregroundStyle(.secondary)
+                        Text(date.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    .help(date.formatted(.iso8601))
+                }
+            }
             .font(.caption)
-            .foregroundStyle(.secondary)
-            .help(date.formatted(.iso8601))
-    }
-
-    private func relative(_ date: Date) -> String {
-        RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+        }
     }
 }

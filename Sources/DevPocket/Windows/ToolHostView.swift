@@ -20,6 +20,9 @@ struct ToolHostView: View {
                 tool.makeContent(model)
                     .id(tool.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .environment(\.sendToTool, SendToToolAction { text, toolID in
+                        coordinator.send(text, to: toolID)
+                    })
             }
             Divider()
             StatusBar(coordinator: coordinator, model: model)
@@ -160,27 +163,32 @@ private struct StatusBar: View {
 
             Spacer(minLength: 12)
 
-            if coordinator.didCopy {
-                Label("Copied", systemImage: "checkmark")
+            if let confirmation = coordinator.copyConfirmation {
+                Label(confirmation, systemImage: "checkmark")
                     .foregroundStyle(.green)
                     .transition(.opacity)
             } else {
-                Button {
-                    coordinator.copyCurrentOutput()
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(model.copyLabel)
-                        Text("⌘⇧C").foregroundStyle(.tertiary)
-                    }
+                HStack(spacing: 14) {
+                    shortcutButton("Copy as JSON String", "⌥⌘C") { coordinator.copyCurrentOutput(escaped: true) }
+                    shortcutButton(model.copyLabel, "⌘⇧C") { coordinator.copyCurrentOutput() }
                 }
-                .buttonStyle(.borderless)
                 .disabled(model.primaryOutput == nil)
             }
         }
         .font(.caption)
         .padding(.horizontal, 12)
         .frame(height: 28)
-        .animation(.easeOut(duration: 0.15), value: coordinator.didCopy)
+        .animation(.easeOut(duration: 0.15), value: coordinator.copyConfirmation)
+    }
+
+    private func shortcutButton(_ title: String, _ shortcut: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                Text(shortcut).foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.borderless)
     }
 
     private func color(for kind: ToolStatus.Kind) -> Color {

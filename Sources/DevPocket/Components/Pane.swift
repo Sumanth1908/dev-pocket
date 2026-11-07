@@ -1,4 +1,5 @@
 import AppKit
+import DevPocketCore
 import SwiftUI
 
 /// A titled editor card with optional trailing icon buttons. Utilities
@@ -65,6 +66,34 @@ struct IconButton: View {
         }
         .buttonStyle(.borderless)
         .help(help)
+    }
+}
+
+/// Copy button for an output: click copies as-is; the arrow offers
+/// escaped versions to paste into code, curl bodies or config.
+struct CopyMenu: View {
+    let text: String
+    var what = "output"
+
+    var body: some View {
+        Menu {
+            Button("Copy") { Clipboard.copy(text) }
+            Button("Copy as JSON String") { Clipboard.copy(JSONTool.escape(text)) }
+            Button("Copy as JSON String, No Quotes") { Clipboard.copy(JSONTool.escape(text, quoted: false)) }
+            if let minified = try? JSONTool.minify(text), minified != text {
+                Button("Copy Minified as JSON String") { Clipboard.copy(JSONTool.escape(minified)) }
+            }
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: 12, weight: .medium))
+        } primaryAction: {
+            Clipboard.copy(text)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .help("Copy \(what). The arrow has escaped versions.")
+        .disabled(text.isEmpty)
     }
 }
 

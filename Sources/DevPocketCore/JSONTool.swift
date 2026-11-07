@@ -35,6 +35,54 @@ public enum JSONTool {
         try format(input, indent: nil)
     }
 
+    /// `text` as a JSON string literal: `{"a":1}` → `"{\"a\":1}"`. Also what
+    /// JavaScript, curl bodies and most config formats expect.
+    public static func escape(_ text: String, quoted: Bool = true) -> String {
+        var out = quoted ? "\"" : ""
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            case _ where scalar.value < 0x20: out += String(format: "\\u%04x", scalar.value)
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return quoted ? out + "\"" : out
+    }
+
+    /// If `text` is JSON that has been escaped into a string — with or
+    /// without the surrounding quotes, possibly several times over, as in
+    /// logs — returns the JSON inside and how many layers were removed.
+    /// Returns nil for plain JSON and for anything that isn't escaped JSON.
+    public static func unescapeJSON(_ text: String) -> (json: String, layers: Int)? {
+        var current = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for layers in 0...5 {
+            if layers > 0, isContainer(current) { return (current, layers) }
+            var inner = stringLiteralValue(current)
+            if inner == nil, !current.hasPrefix("\"") {
+                inner = stringLiteralValue("\"\(current)\"")
+            }
+            guard let next = inner?.trimmingCharacters(in: .whitespacesAndNewlines), next != current else { return nil }
+            current = next
+        }
+        return nil
+    }
+
+    private static func stringLiteralValue(_ text: String) -> String? {
+        guard text.count >= 2, text.hasPrefix("\""), text.hasSuffix("\"") else { return nil }
+        return (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])) as? String
+    }
+
+    private static func isContainer(_ text: String) -> Bool {
+        guard text.first == "{" || text.first == "[" else { return false }
+        return (try? JSONSerialization.jsonObject(with: Data(text.utf8))) != nil
+    }
+
     /// Character-level re-indenter for already-valid JSON. Leaves string
     /// contents untouched and collapses empty containers to `{}` / `[]`.
     static func reindent(_ json: String, indent: String?) -> String {

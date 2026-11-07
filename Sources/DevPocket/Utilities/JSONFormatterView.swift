@@ -37,25 +37,45 @@ final class JSONModel: ToolModel {
         }
     }
 
+    struct Formatted {
+        let output: String
+        /// How many layers of string escaping were removed first (0 = none).
+        let unescapedLayers: Int
+    }
+
     @Published var mode = Mode.pretty
     @Published var indent = Indent.two
     @Published var sortKeys = false
 
-    var result: Result<String, Error>? {
-        input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : Result { try JSONTool.format(input, indent: mode == .pretty ? indent.string : nil, sortKeys: sortKeys) }
+    /// Escaped JSON (`"{\"a\":1}"`, as found in logs) is unescaped first.
+    var result: Result<Formatted, Error>? {
+        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let indent = mode == .pretty ? indent.string : nil
+        return Result {
+            if let (json, layers) = JSONTool.unescapeJSON(input) {
+                return Formatted(output: try JSONTool.format(json, indent: indent, sortKeys: sortKeys), unescapedLayers: layers)
+            }
+            return Formatted(output: try JSONTool.format(input, indent: indent, sortKeys: sortKeys), unescapedLayers: 0)
+        }
     }
 
     override var status: ToolStatus {
         switch result {
-        case .none: .idle("Paste or type JSON")
-        case .failure(let error): ToolStatus(kind: .error, text: error.localizedDescription)
-        case .success(let output): ToolStatus(kind: .ok, text: "Valid JSON", detail: "\(input.count) → \(output.count) chars")
+        case .none:
+            return .idle("Paste or type JSON. Escaped JSON from logs is unescaped automatically.")
+        case .failure(let error):
+            return ToolStatus(kind: .error, text: error.localizedDescription)
+        case .success(let formatted):
+            let sizes = "\(input.count) → \(formatted.output.count) chars"
+            switch formatted.unescapedLayers {
+            case 0: return ToolStatus(kind: .ok, text: "Valid JSON", detail: sizes)
+            case 1: return ToolStatus(kind: .ok, text: "Valid JSON · unescaped from a string", detail: sizes)
+            case let n: return ToolStatus(kind: .ok, text: "Valid JSON · unescaped \(n) times", detail: sizes)
+            }
         }
     }
 
-    override var primaryOutput: String? { try? result?.get() }
+    override var primaryOutput: String? { try? result?.get().output }
 
     override var copyLabel: String { mode == .pretty ? "Copy Formatted" : "Copy Minified" }
 }
@@ -89,6 +109,7 @@ struct JSONFormatterView: View {
 
     var body: some View {
         let output = model.primaryOutput ?? ""
+        let isUnescaped = ((try? model.result?.get())?.unescapedLayers ?? 0) > 0
 
         HSplitView {
             Pane("Input") {
@@ -99,13 +120,12 @@ struct JSONFormatterView: View {
             .frame(minWidth: 220)
             .padding(.trailing, 6)
 
-            Pane("Output") {
+            Pane(isUnescaped ? "Output · unescaped" : "Output") {
                 CodeEditor(text: .constant(output), isEditable: false)
             } accessory: {
                 IconButton("arrow.uturn.left", help: "Use as input") { model.input = output }
                     .disabled(output.isEmpty)
-                IconButton("doc.on.doc", help: "Copy output") { Clipboard.copy(output) }
-                    .disabled(output.isEmpty)
+                CopyMenu(text: output)
             }
             .frame(minWidth: 220)
             .padding(.leading, 6)

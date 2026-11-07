@@ -226,3 +226,45 @@ final class JWTPartRangeTests: XCTestCase {
         XCTAssertEqual(parts("Bearer "), [])
     }
 }
+
+final class JSONEscapingTests: XCTestCase {
+    func testEscape() {
+        XCTAssertEqual(JSONTool.escape(#"{"a":"x"}"#), #""{\"a\":\"x\"}""#)
+        XCTAssertEqual(JSONTool.escape(#"{"a":"x"}"#, quoted: false), #"{\"a\":\"x\"}"#)
+        XCTAssertEqual(JSONTool.escape("line1\nline2\ttab \\ back"), #""line1\nline2\ttab \\ back""#)
+        XCTAssertEqual(JSONTool.escape("bell\u{07} é ✓"), #""bell\u0007 é ✓""#)
+    }
+
+    func testEscapedOutputIsAValidJSONString() throws {
+        let original = "{\n  \"quote\": \"\\\"hi\\\"\",\n  \"path\": \"C:\\\\tmp\"\n}"
+        let decoded = try JSONSerialization.jsonObject(with: Data(JSONTool.escape(original).utf8), options: .fragmentsAllowed) as? String
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testUnescape() {
+        XCTAssertEqual(JSONTool.unescapeJSON(#""{\"a\":1}""#)?.json, #"{"a":1}"#)
+        XCTAssertEqual(JSONTool.unescapeJSON(#"{\"a\":1}"#)?.json, #"{"a":1}"#, "without surrounding quotes")
+        XCTAssertEqual(JSONTool.unescapeJSON(#"  "[1,\"two\"]"  "#)?.json, #"[1,"two"]"#)
+        let twice = JSONTool.unescapeJSON(#""{\\\"a\\\":1}""#)
+        XCTAssertEqual(twice?.json, #"{"a":1}"#)
+        XCTAssertEqual(twice?.layers, 2)
+    }
+
+    func testUnescapeRoundTrip() {
+        let json = #"{"user":{"id":1,"name":"Ann \"A\""},"tags":["x"]}"#
+        XCTAssertEqual(JSONTool.unescapeJSON(JSONTool.escape(json))?.json, json)
+        XCTAssertEqual(JSONTool.unescapeJSON(JSONTool.escape(JSONTool.escape(json)))?.layers, 2)
+    }
+
+    func testUnescapeIgnoresPlainJSONAndNonJSON() {
+        for text in [#"{"a":1}"#, "[1,2]", #""just a string""#, "hello", #"hello\nworld"#, "", #"{\"a\":"#] {
+            XCTAssertNil(JSONTool.unescapeJSON(text), text)
+        }
+    }
+
+    func testEscapedJSONIsDetectedAsJSON() {
+        XCTAssertEqual(ContentDetector.detect(#""{\"a\":1}""#), [Detection(kind: .json, confidence: 0.85)])
+        XCTAssertEqual(ContentDetector.detect(#"{\"a\":1}"#), [Detection(kind: .json, confidence: 0.85)])
+        XCTAssertEqual(ContentDetector.detect(#""just a string""#), [])
+    }
+}

@@ -10,9 +10,9 @@ Everything runs locally. Nothing you paste leaves your Mac, and nothing you past
 
 | Tool | `⌘` | What it does |
 |---|---|---|
-| **JWT Decoder** | `⌘1` | Colors the token by part, in jwt.io's colors: header pink, payload purple, signature cyan. The colors update as you type and match the dots on the decoded panes. Shows the header and payload as formatted JSON, the issued, not-before and expiry times, and whether the token is valid, expired or not yet valid. A leading `Bearer ` is fine. It decodes only and **does not verify the signature**. |
-| **JSON Formatter** | `⌘2` | Checks the JSON as you type. Pretty-prints with 2 or 4 spaces or tabs, minifies, and can sort keys. Key order and numbers stay exactly as written, unless you sort keys. Errors say where the problem is, e.g. *Invalid value around line 1, column 6*. |
-| **Base64** | `⌘3` | Encodes and decodes, with a URL-safe (Base64URL) option. Decoding accepts both alphabets and missing padding. A swap button feeds the output back in as the input. |
+| **JWT Decoder** | `⌘1` | Colors the token by part, in jwt.io's colors: header pink, payload purple, signature cyan. The colors update as you type and match the dots on the decoded panes. Shows the header and payload as formatted JSON, the issued, not-before and expiry times, and whether the token is valid, expired or not yet valid. Click a date to open it in the Epoch Converter. A leading `Bearer ` is fine. It decodes only and **does not verify the signature**. |
+| **JSON Formatter** | `⌘2` | Checks the JSON as you type. Pretty-prints with 2 or 4 spaces or tabs, minifies, and can sort keys. Key order and numbers stay exactly as written, unless you sort keys. Errors say where the problem is, e.g. *Invalid value around line 1, column 6*. **Escaped JSON** is unescaped automatically: JSON wrapped in a string, as in logs (`"{\"a\":1}"`), with or without the outer quotes, even if it was escaped more than once. |
+| **Base64** | `⌘3` | Encodes and decodes, with a URL-safe (Base64URL) option. Decoding accepts both alphabets and missing padding. A swap button feeds the output back in as the input. When the decoded text is JSON, it's pretty-printed; turn this off with the *Format JSON* switch. |
 | **Epoch Converter** | `⌘4` | Converts Unix timestamps to dates and back. Numbers can be in seconds, milliseconds, microseconds or nanoseconds; the unit is worked out from the number's size. Dates can be ISO 8601, RFC 2822, `2023-11-14 22:13:20`, `2023-11-14`, or `now`. It shows Unix seconds and milliseconds, ISO 8601 in UTC and in local time, RFC 2822, a readable date and how long ago it was. With nothing typed, it shows the current time, live. |
 
 ## Opening DevPocket
@@ -32,7 +32,7 @@ When the window opens, DevPocket checks the clipboard once. If it recognizes wha
 | On the clipboard | Opens |
 |---|---|
 | A JWT, with or without `Bearer ` | JWT Decoder |
-| Text starting with `{` or `[`. Broken JSON counts too, so you see the error | JSON Formatter |
+| Text starting with `{` or `[`, or escaped JSON like `"{\"a\":1}"`. Broken JSON counts too, so you see the error | JSON Formatter |
 | Base64 that decodes to readable text | Base64, set to Decode |
 | A 10- or 13-digit Unix timestamp between the years 2000 and 2100, or a date with a time, like `2023-11-14T22:13` | Epoch Converter |
 
@@ -61,6 +61,12 @@ Some rules:
 - **Title bar:** the tool's name and its controls, such as JSON's Pretty/Minify, the indent and Sort keys, or the epoch tool's Local/UTC and Now. There's also search (`⌘K`) and a pin that keeps the window above other apps.
 - **Icon column on the left:** one icon per tool; hover over one to see its name and shortcut.
 - **Status bar:** whether the input is valid or what's wrong with it, plus details such as sizes, the algorithm or how long ago. The button on the right copies the tool's main result.
+- **Copying with escaping.** Every output's copy button copies the text as-is when clicked. Its arrow opens a menu with escaped versions, ready to paste into code, a curl body or a config file:
+  - **Copy as JSON String:** `{"a":1}` becomes `"{\"a\":1}"`
+  - **Copy as JSON String, No Quotes:** `{\"a\":1}`, for pasting inside existing quotes
+  - **Copy Minified as JSON String:** shown when the output is JSON; strips the whitespace first
+
+  The status bar has the same choice for the main result: `⌘⇧C` copies it as-is, `⌥⌘C` as a JSON string.
 - **Inputs are kept.** Each tool keeps its input while you switch between tools and when you hide the window. They live in memory only.
 
 ### Keyboard
@@ -72,6 +78,7 @@ Some rules:
 | `⌘1` – `⌘9` | Switch tool, in the order of the icon column |
 | `⌘⇧V` | Replace the input with the clipboard |
 | `⌘⇧C` | Copy the main result: the payload, formatted JSON, decoded text or converted date. In the epoch tool with nothing typed, it copies the current epoch |
+| `⌥⌘C` | Copy the main result as an escaped JSON string |
 | `⌘L` | Clear the input |
 | `Esc` | Close the palette; press again to hide the window |
 | `⌘W` | Hide the window |
@@ -166,7 +173,9 @@ To have it **open automatically for clipboard content**:
 3. Set `handles: [.myKind]` on the tool.
 4. Optionally, override `accept(clipboard:kind:)` to prepare the tool; Base64 uses this to switch to Decode.
 
-Building blocks you can reuse: `Pane` (a titled editor card with icon buttons and an optional color dot), `CodeEditor` (pass a `highlighter` to color ranges of the text), `InputActions` (paste and clear buttons), `IconButton`, `EmptyHint`, `Clipboard`, and `relativeDate`.
+Building blocks you can reuse: `Pane` (a titled editor card with icon buttons and an optional color dot), `CodeEditor` (pass a `highlighter` to color ranges of the text), `CopyMenu` (a copy button with escaped versions), `InputActions` (paste and clear buttons), `IconButton`, `EmptyHint`, `Clipboard`, and `relativeDate`.
+
+To hand a value to another tool, as the JWT dates do, read `@Environment(\.sendToTool)` and call `sendToTool(text, to: DevUtility.someTool.id)`.
 
 ## Known limitations
 

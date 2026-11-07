@@ -118,7 +118,7 @@ struct JWTDecoderView: View {
         Pane(title, tint: part.color) {
             CodeEditor(text: .constant(json), isEditable: false)
         } accessory: {
-            IconButton("doc.on.doc", help: "Copy \(title.lowercased())") { Clipboard.copy(json) }
+            CopyMenu(text: json, what: title.lowercased())
         }
     }
 }
@@ -139,8 +139,11 @@ private struct PartLegend: View {
     }
 }
 
+/// Issued / not-before / expiry; click one to open it in the Epoch Converter.
 private struct ClaimTimes: View {
     let jwt: DecodedJWT
+
+    @Environment(\.sendToTool) private var sendToTool
 
     var body: some View {
         let times = [("Issued", jwt.issuedAt), ("Not before", jwt.notBefore), ("Expires", jwt.expiresAt)]
@@ -151,9 +154,12 @@ private struct ClaimTimes: View {
                 ForEach(times, id: \.0) { label, date in
                     HStack(spacing: 4) {
                         Text(label).foregroundStyle(.secondary)
-                        Text(date.formatted(date: .abbreviated, time: .shortened))
+                        Button(date.formatted(date: .abbreviated, time: .shortened)) {
+                            sendToTool(EpochTool.epochString(date, unit: .seconds), to: DevUtility.epochConverter.id)
+                        }
+                        .buttonStyle(.link)
                     }
-                    .help(date.formatted(.iso8601))
+                    .help("\(date.formatted(.iso8601)). Click to open in the Epoch Converter.")
                 }
             }
             .font(.caption)

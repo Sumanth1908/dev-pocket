@@ -35,8 +35,8 @@ final class AppCoordinator: ObservableObject {
     /// What the clipboard looked like the last time it was read.
     @Published private(set) var clipboardSuggestion: ClipboardSuggestion?
 
-    /// Briefly true after ⌘⇧C, for the status bar's confirmation.
-    @Published private(set) var didCopy = false
+    /// Briefly set after ⌘⇧C / ⌥⌘C, for the status bar's confirmation.
+    @Published private(set) var copyConfirmation: String?
 
     @Published var isBubbleVisible: Bool {
         didSet {
@@ -198,6 +198,13 @@ final class AppCoordinator: ObservableObject {
         isPaletteVisible = false
     }
 
+    /// Opens `toolID` with `text` as its input.
+    func send(_ text: String, to toolID: DevUtility.ID) {
+        guard let tool = UtilityRegistry.utility(id: toolID) else { return }
+        select(tool.id)
+        store.model(for: tool).input = text
+    }
+
     private func route(_ text: String, kind: ContentKind, to tool: DevUtility) {
         selectedUtilityID = tool.id
         let model = store.model(for: tool)
@@ -220,6 +227,8 @@ final class AppCoordinator: ObservableObject {
             if let text = Clipboard.paste() { currentModel.input = text }
         case ([.command, .shift], "c"):
             copyCurrentOutput()
+        case ([.command, .option], "c"):
+            copyCurrentOutput(escaped: true)
         case ([.command], _) where Int(key).map((1...9).contains) == true:
             let index = Int(key)! - 1
             guard UtilityRegistry.all.indices.contains(index) else { return false }
@@ -239,14 +248,15 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
-    func copyCurrentOutput() {
+    /// Copies the current tool's main result, optionally as a JSON string.
+    func copyCurrentOutput(escaped: Bool = false) {
         guard let output = currentModel.primaryOutput else { return }
-        Clipboard.copy(output)
-        didCopy = true
+        Clipboard.copy(escaped ? JSONTool.escape(output) : output)
+        copyConfirmation = escaped ? "Copied as JSON string" : "Copied"
         copyResetTask?.cancel()
         copyResetTask = Task {
             try? await Task.sleep(for: .seconds(1.2))
-            if !Task.isCancelled { didCopy = false }
+            if !Task.isCancelled { copyConfirmation = nil }
         }
     }
 

@@ -22,29 +22,47 @@ final class Base64Model: ToolModel {
         var id: Self { self }
     }
 
+    struct Output {
+        let text: String
+        /// Decoded text was JSON and has been pretty-printed.
+        let isFormattedJSON: Bool
+    }
+
     @Published var mode = Mode.encode
     @Published var urlSafe = false
+    /// Pretty-print decoded output when it's a JSON object or array.
+    @Published var formatsJSON = true
 
-    var result: Result<String, Error>? {
+    var result: Result<Output, Error>? {
         guard !input.isEmpty else { return nil }
         return Result {
             switch mode {
-            case .encode: Base64Tool.encode(input, urlSafe: urlSafe)
-            case .decode: try Base64Tool.decode(input)
+            case .encode:
+                return Output(text: Base64Tool.encode(input, urlSafe: urlSafe), isFormattedJSON: false)
+            case .decode:
+                let decoded = try Base64Tool.decode(input)
+                let trimmed = decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+                if formatsJSON, trimmed.first == "{" || trimmed.first == "[", let pretty = try? JSONTool.format(trimmed) {
+                    return Output(text: pretty, isFormattedJSON: true)
+                }
+                return Output(text: decoded, isFormattedJSON: false)
             }
         }
     }
 
     override var status: ToolStatus {
         switch result {
-        case .none: .idle("Type text to encode, or paste Base64 to decode")
-        case .failure(let error): ToolStatus(kind: .error, text: error.localizedDescription)
+        case .none:
+            return .idle("Type text to encode, or paste Base64 to decode")
+        case .failure(let error):
+            return ToolStatus(kind: .error, text: error.localizedDescription)
         case .success(let output):
-            ToolStatus(kind: .ok, text: mode == .encode ? "Encoded" : "Decoded", detail: "\(input.count) → \(output.count) chars")
+            let text = mode == .encode ? "Encoded" : output.isFormattedJSON ? "Decoded · JSON, formatted" : "Decoded"
+            return ToolStatus(kind: .ok, text: text, detail: "\(input.count) → \(output.text.count) chars")
         }
     }
 
-    override var primaryOutput: String? { try? result?.get() }
+    override var primaryOutput: String? { try? result?.get().text }
 
     override var copyLabel: String { "Copy Result" }
 
@@ -66,9 +84,14 @@ struct Base64Controls: View {
             .labelsHidden()
             .fixedSize()
 
-            Toggle("URL-safe", isOn: $model.urlSafe)
-                .disabled(model.mode == .decode)
-                .help("Base64URL: - and _ instead of + and /, no padding. Decoding accepts both.")
+            switch model.mode {
+            case .encode:
+                Toggle("URL-safe", isOn: $model.urlSafe)
+                    .help("Base64URL: - and _ instead of + and /, no padding. Decoding accepts both.")
+            case .decode:
+                Toggle("Format JSON", isOn: $model.formatsJSON)
+                    .help("Pretty-print the decoded text when it's JSON")
+            }
         }
     }
 }
@@ -94,8 +117,7 @@ struct Base64View: View {
                     model.mode = model.mode == .encode ? .decode : .encode
                 }
                 .disabled(output.isEmpty)
-                IconButton("doc.on.doc", help: "Copy output") { Clipboard.copy(output) }
-                    .disabled(output.isEmpty)
+                CopyMenu(text: output)
             }
         }
         .padding(14)

@@ -41,6 +41,25 @@ class ToolModel: ObservableObject {
     func clear() { input = "" }
 }
 
+/// Lets a tool hand a value to another tool, e.g. a JWT's expiry to the
+/// Epoch Converter: `sendToTool(text, to: DevUtility.epochConverter.id)`.
+struct SendToToolAction {
+    let perform: (_ text: String, _ toolID: DevUtility.ID) -> Void
+
+    func callAsFunction(_ text: String, to toolID: DevUtility.ID) { perform(text, toolID) }
+}
+
+private struct SendToToolKey: EnvironmentKey {
+    static let defaultValue = SendToToolAction { _, _ in }
+}
+
+extension EnvironmentValues {
+    var sendToTool: SendToToolAction {
+        get { self[SendToToolKey.self] }
+        set { self[SendToToolKey.self] = newValue }
+    }
+}
+
 @MainActor
 final class ToolStore {
     private var models: [DevUtility.ID: ToolModel] = [:]

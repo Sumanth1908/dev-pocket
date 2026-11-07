@@ -36,7 +36,10 @@ public enum ContentDetector {
         if let first = trimmed.first, first == "{" || first == "[" {
             // Broken JSON still belongs in the formatter, which shows the error.
             let isValid = (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) != nil
-            results.append(Detection(kind: .json, confidence: isValid ? 0.9 : 0.4))
+            let confidence = isValid ? 0.9 : JSONTool.unescapeJSON(trimmed) != nil ? 0.85 : 0.4
+            results.append(Detection(kind: .json, confidence: confidence))
+        } else if trimmed.first == "\"", JSONTool.unescapeJSON(trimmed) != nil {
+            results.append(Detection(kind: .json, confidence: 0.85))
         }
         if let confidence = base64Confidence(trimmed) {
             results.append(Detection(kind: .base64, confidence: confidence))

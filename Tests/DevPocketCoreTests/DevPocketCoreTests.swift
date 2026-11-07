@@ -195,3 +195,34 @@ final class EpochToolTests: XCTestCase {
         }
     }
 }
+
+final class JWTPartRangeTests: XCTestCase {
+    private func parts(_ raw: String) -> [String] {
+        JWTDecoder.partRanges(in: raw).map { "\($0.part.rawValue)=\(raw[$0.range])" }
+    }
+
+    func testFullToken() {
+        XCTAssertEqual(parts("aaa.bbb.ccc"), ["header=aaa", "payload=bbb", "signature=ccc"])
+    }
+
+    func testIgnoresWhitespaceAndBearerPrefix() {
+        XCTAssertEqual(parts("  Bearer   aaa.bbb.ccc \n"), ["header=aaa", "payload=bbb", "signature=ccc"])
+    }
+
+    func testPartialTokenWhileTyping() {
+        XCTAssertEqual(parts("aaa"), ["header=aaa"])
+        XCTAssertEqual(parts("aaa.bb"), ["header=aaa", "payload=bb"])
+        XCTAssertEqual(parts("aaa.bbb."), ["header=aaa", "payload=bbb"])
+    }
+
+    func testPartsAreAssignedByPosition() {
+        XCTAssertEqual(parts(".bbb.ccc"), ["payload=bbb", "signature=ccc"])
+        XCTAssertEqual(parts("a.b.c.d.e"), ["header=a", "payload=b", "signature=c"])
+    }
+
+    func testEmpty() {
+        XCTAssertEqual(parts(""), [])
+        XCTAssertEqual(parts("   "), [])
+        XCTAssertEqual(parts("Bearer "), [])
+    }
+}

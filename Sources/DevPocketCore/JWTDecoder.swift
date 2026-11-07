@@ -45,7 +45,38 @@ public enum JWTDecodeError: LocalizedError, Equatable {
     }
 }
 
+public enum JWTPart: String, CaseIterable, Sendable {
+    case header, payload, signature
+}
+
 public enum JWTDecoder {
+    /// Where each part of a (possibly incomplete) token sits in `raw`,
+    /// skipping surrounding whitespace and a `Bearer ` prefix. Parts are
+    /// assigned by position; empty parts and anything after the third are
+    /// left out. Used to color the token as it's typed.
+    public static func partRanges(in raw: String) -> [(part: JWTPart, range: Range<String.Index>)] {
+        var start = raw.startIndex
+        var end = raw.endIndex
+        while start < end, raw[start].isWhitespace { start = raw.index(after: start) }
+        while end > start, raw[raw.index(before: end)].isWhitespace { end = raw.index(before: end) }
+        let lowered = raw[start..<end].lowercased()
+        if lowered == "bearer" { return [] }
+        if lowered.hasPrefix("bearer ") {
+            start = raw.index(start, offsetBy: 7)
+            while start < end, raw[start].isWhitespace { start = raw.index(after: start) }
+        }
+
+        var ranges: [(part: JWTPart, range: Range<String.Index>)] = []
+        var segmentStart = start
+        for part in JWTPart.allCases {
+            let dot = raw[segmentStart..<end].firstIndex(of: ".") ?? end
+            if segmentStart < dot { ranges.append((part, segmentStart..<dot)) }
+            guard dot < end else { break }
+            segmentStart = raw.index(after: dot)
+        }
+        return ranges
+    }
+
     /// Decodes (does not verify) a JWT. Accepts an optional `Bearer ` prefix.
     public static func decode(_ raw: String) throws -> DecodedJWT {
         var token = raw.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -5,11 +5,14 @@ import SwiftUI
 /// compose their layouts out of these.
 struct Pane<Content: View, Accessory: View>: View {
     let title: String
+    /// Optional color dot before the title, to tie the pane to something.
+    let tint: Color?
     let content: Content
     let accessory: Accessory
 
-    init(_ title: String, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+    init(_ title: String, tint: Color? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.title = title
+        self.tint = tint
         self.content = content()
         self.accessory = accessory()
     }
@@ -17,6 +20,9 @@ struct Pane<Content: View, Accessory: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 2) {
+                if let tint {
+                    Circle().fill(tint).frame(width: 7, height: 7).padding(.trailing, 4)
+                }
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .textCase(.uppercase)
@@ -34,8 +40,8 @@ struct Pane<Content: View, Accessory: View>: View {
 }
 
 extension Pane where Accessory == EmptyView {
-    init(_ title: String, @ViewBuilder content: () -> Content) {
-        self.init(title, content: content, accessory: { EmptyView() })
+    init(_ title: String, tint: Color? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title, tint: tint, content: content, accessory: { EmptyView() })
     }
 }
 

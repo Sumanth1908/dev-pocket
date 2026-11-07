@@ -46,27 +46,64 @@ final class JWTModel: ToolModel {
     override var copyLabel: String { "Copy Payload" }
 }
 
+/// The jwt.io convention, using system colors so they adapt to light/dark
+/// mode and Increase Contrast.
+extension JWTPart {
+    var nsColor: NSColor {
+        switch self {
+        case .header: .systemPink
+        case .payload: .systemPurple
+        case .signature: .systemCyan
+        }
+    }
+
+    var color: Color { Color(nsColor: nsColor) }
+
+    var label: String {
+        switch self {
+        case .header: "Header"
+        case .payload: "Payload"
+        case .signature: "Signature (not verified)"
+        }
+    }
+}
+
 struct JWTDecoderView: View {
     @ObservedObject var model: JWTModel
+
+    private static let highlightParts: Highlighter = { text in
+        JWTDecoder.partRanges(in: text).map { (NSRange($0.range, in: text), $0.part.nsColor) }
+    }
 
     var body: some View {
         let jwt = try? model.decoded?.get()
 
         VStack(alignment: .leading, spacing: 12) {
             Pane("Token") {
-                CodeEditor(text: $model.input, placeholder: "Paste a JWT (a leading \"Bearer \" is fine)…")
-                    .frame(height: 84)
+                CodeEditor(
+                    text: $model.input,
+                    placeholder: "Paste a JWT (a leading \"Bearer \" is fine)…",
+                    highlighter: Self.highlightParts
+                )
+                .frame(height: 84)
             } accessory: {
                 InputActions(text: $model.input)
             }
 
+            if !model.input.isEmpty {
+                HStack(spacing: 16) {
+                    PartLegend()
+                    Spacer(minLength: 12)
+                    if let jwt { ClaimTimes(jwt: jwt) }
+                }
+            }
+
             if let jwt {
-                ClaimTimes(jwt: jwt)
                 HSplitView {
-                    jsonPane("Header", jwt.header)
+                    jsonPane("Header", jwt.header, part: .header)
                         .frame(minWidth: 180)
                         .padding(.trailing, 6)
-                    jsonPane("Payload", jwt.payload)
+                    jsonPane("Payload", jwt.payload, part: .payload)
                         .frame(minWidth: 240)
                         .padding(.leading, 6)
                 }
@@ -77,12 +114,28 @@ struct JWTDecoderView: View {
         .padding(14)
     }
 
-    private func jsonPane(_ title: String, _ json: String) -> some View {
-        Pane(title) {
+    private func jsonPane(_ title: String, _ json: String, part: JWTPart) -> some View {
+        Pane(title, tint: part.color) {
             CodeEditor(text: .constant(json), isEditable: false)
         } accessory: {
             IconButton("doc.on.doc", help: "Copy \(title.lowercased())") { Clipboard.copy(json) }
         }
+    }
+}
+
+/// Color key for the token's three parts.
+private struct PartLegend: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(JWTPart.allCases, id: \.self) { part in
+                HStack(spacing: 5) {
+                    Circle().fill(part.color).frame(width: 7, height: 7)
+                    Text(part.label)
+                }
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }
 

@@ -10,7 +10,7 @@ Everything runs locally. Nothing you paste leaves your Mac, and nothing you past
 
 | Tool | `⌘` | What it does |
 |---|---|---|
-| **JWT Decoder** | `⌘1` | Shows the header and payload as formatted JSON, the issued, not-before and expiry times, and whether the token is valid, expired or not yet valid. A leading `Bearer ` is fine. It decodes only and **does not verify the signature**. |
+| **JWT Decoder** | `⌘1` | Colors the token by part, in jwt.io's colors: header pink, payload purple, signature cyan. The colors update as you type and match the dots on the decoded panes. Shows the header and payload as formatted JSON, the issued, not-before and expiry times, and whether the token is valid, expired or not yet valid. A leading `Bearer ` is fine. It decodes only and **does not verify the signature**. |
 | **JSON Formatter** | `⌘2` | Checks the JSON as you type. Pretty-prints with 2 or 4 spaces or tabs, minifies, and can sort keys. Key order and numbers stay exactly as written, unless you sort keys. Errors say where the problem is, e.g. *Invalid value around line 1, column 6*. |
 | **Base64** | `⌘3` | Encodes and decodes, with a URL-safe (Base64URL) option. Decoding accepts both alphabets and missing padding. A swap button feeds the output back in as the input. |
 | **Epoch Converter** | `⌘4` | Converts Unix timestamps to dates and back. Numbers can be in seconds, milliseconds, microseconds or nanoseconds; the unit is worked out from the number's size. Dates can be ISO 8601, RFC 2822, `2023-11-14 22:13:20`, `2023-11-14`, or `now`. It shows Unix seconds and milliseconds, ISO 8601 in UTC and in local time, RFC 2822, a readable date and how long ago it was. With nothing typed, it shows the current time, live. |
@@ -166,7 +166,7 @@ To have it **open automatically for clipboard content**:
 3. Set `handles: [.myKind]` on the tool.
 4. Optionally, override `accept(clipboard:kind:)` to prepare the tool; Base64 uses this to switch to Decode.
 
-Building blocks you can reuse: `Pane` (a titled editor card with icon buttons), `CodeEditor`, `InputActions` (paste and clear buttons), `IconButton`, `EmptyHint`, `Clipboard`, and `relativeDate`.
+Building blocks you can reuse: `Pane` (a titled editor card with icon buttons and an optional color dot), `CodeEditor` (pass a `highlighter` to color ranges of the text), `InputActions` (paste and clear buttons), `IconButton`, `EmptyHint`, `Clipboard`, and `relativeDate`.
 
 ## Known limitations
 
